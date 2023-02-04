@@ -198,7 +198,7 @@ def policy(
     return value, pi
 
 
-def train_ppo(rng, config, model, params, mle_log):
+def train_ppo(rng, config, model, params, mle_log, mask_obs=False):
     """Training loop for PPO based on https://github.com/bmazoure/ppo_jax."""
     num_total_epochs = int(config.num_train_steps // config.num_train_envs + 1)
     num_steps_warm_up = int(config.num_train_steps * config.lr_warmup)
@@ -289,6 +289,8 @@ def train_ppo(rng, config, model, params, mle_log):
                 config.entropy_coeff,
                 config.critic_coeff,
                 rng_update,
+                mask_obs,
+                config.mask_coeff,
             )
             batch = batch_manager.reset()
 
@@ -323,6 +325,15 @@ def train_ppo(rng, config, model, params, mle_log):
 def flatten_dims(x):
     return x.swapaxes(0, 1).reshape(x.shape[0] * x.shape[1], *x.shape[2:])
 
+@jax.jit
+def mask_observation(obs, rng):
+
+    # TODO: Add custom probability
+    visible = jax.random.randint(rng, obs.shape, 0, 10)
+    masked_obs = jnp.where(visible > 0, obs, -1)
+
+    return masked_obs
+
 
 def loss_actor_and_critic(
     params_model: flax.core.frozen_dict.FrozenDict,
@@ -336,6 +347,9 @@ def loss_actor_and_critic(
     clip_eps: float,
     critic_coeff: float,
     entropy_coeff: float,
+    mask_rng: jax.random.PRNGKey,
+    mask_obs: bool,
+    mask_coeff: float,
 ) -> jnp.ndarray:
 
     value_pred, pi = apply_fn(params_model, obs, rng=None)
@@ -362,13 +376,19 @@ def loss_actor_and_critic(
 
     entropy = pi.entropy().mean()
 
+    masked_obs = mask_observation(obs, mask_rng)
+    _, pi_mask = apply_fn(params_model, masked_obs, rng=None)
+    loss_mask = jnp.square(pi_mask - jax.lax.stop_gradient(pi))
+    loss_mask = jax.lax.select(mask_obs, loss_mask.mean(), 0.)
+
     total_loss = (
-        loss_actor + critic_coeff * value_loss - entropy_coeff * entropy
+        loss_actor + critic_coeff * value_loss - entropy_coeff * entropy + mask_coeff * loss_mask
     )
 
     return total_loss, (
         value_loss,
         loss_actor,
+        loss_mask,
         entropy,
         value_pred.mean(),
         target.mean(),
@@ -387,6 +407,8 @@ def update(
     entropy_coeff: float,
     critic_coeff: float,
     rng: jax.random.PRNGKey,
+    mask_obs=False,
+    mask_coeff=0,
 ):
     """Perform multiple epochs of updates with multiple updates."""
     obs, action, log_pi_old, value, target, gae = batch
@@ -396,7 +418,8 @@ def update(
     avg_metrics_dict = defaultdict(int)
 
     for _ in range(epoch_ppo):
-        idxes = jax.random.permutation(rng, idxes)
+        rng, perm_rng, mask_rng = jax.random.split(rng, 3)
+        idxes = jax.random.permutation(perm_rng, idxes)
         idxes_list = [
             idxes[start : start + size_minibatch]
             for start in jnp.arange(0, size_batch, size_minibatch)
@@ -414,11 +437,15 @@ def update(
             clip_eps,
             entropy_coeff,
             critic_coeff,
+            mask_rng,
+            mask_obs,
+            mask_coeff,
         )
 
         total_loss, (
             value_loss,
             loss_actor,
+            loss_mask,
             entropy,
             value_pred,
             target_val,
@@ -428,6 +455,7 @@ def update(
         avg_metrics_dict["total_loss"] += np.asarray(total_loss)
         avg_metrics_dict["value_loss"] += np.asarray(value_loss)
         avg_metrics_dict["actor_loss"] += np.asarray(loss_actor)
+        avg_metrics_dict["mask_loss"] += np.asarray(loss_mask)
         avg_metrics_dict["entropy"] += np.asarray(entropy)
         avg_metrics_dict["value_pred"] += np.asarray(value_pred)
         avg_metrics_dict["target"] += np.asarray(target_val)
@@ -452,8 +480,12 @@ def update_epoch(
     clip_eps: float,
     entropy_coeff: float,
     critic_coeff: float,
+    mask_rng: jax.random.PRNGKey,
+    mask_obs: bool,
+    mask_coeff: float,
 ):
     for idx in idxes:
+        mask_rng, idx_mask_rng = jax.random.split(mask_rng)
         # print(action[idx].shape, action[idx].reshape(-1, 1).shape)
         grad_fn = jax.value_and_grad(loss_actor_and_critic, has_aux=True)
         total_loss, grads = grad_fn(
@@ -469,6 +501,9 @@ def update_epoch(
             clip_eps=clip_eps,
             critic_coeff=critic_coeff,
             entropy_coeff=entropy_coeff,
+            mask_rng=idx_mask_rng,
+            mask_obs=mask_obs,
+            mask_coeff=mask_coeff,
         )
         train_state = train_state.apply_gradients(grads=grads)
     return train_state, total_loss
