@@ -5,4 +5,8 @@ dotmap
 tqdm
 numpy
 matplotlib
-yaml
+pyyaml
+gym
+tensorflow-probability
+wandb
+seaborn
