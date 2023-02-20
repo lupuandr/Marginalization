@@ -1,7 +1,7 @@
 import jax
-# import wandb
 from utils.models import get_model_ready
 from utils.helpers import load_config, save_pkl_object
+import wandb
 
 
 def main(config, mle_log, log_ext="", mask_obs=False):
@@ -72,13 +72,24 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "-mask",
-        "--mask-obs",
+        "--mask_obs",
         action="store_true",
         default=False,
         help="Whether to applying observation masking (marginalization)",
     )
+    # parser.add_argument(
+    #     "-no-wandb",
+    #     "--no-wandb",
+    #     action="store_true",
+    #     default=False,
+    #     help="If true will disable wandb logging",
+    # )
+
     args, _ = parser.parse_known_args()
     config = load_config(args.config_fname, args.seed_id, args.lrate)
+    config["mask"] = args.mask_obs
+    wandb.init(config=config)
+
     with jax.disable_jit(False):
         main(
             config.train_config,

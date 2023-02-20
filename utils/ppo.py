@@ -9,6 +9,8 @@ from flax.training.train_state import TrainState
 import numpy as np
 import tqdm
 import gymnax
+from tensorflow_probability.substrates.jax.distributions import kl_divergence
+import wandb
 
 
 class BatchManager:
@@ -184,7 +186,7 @@ class RolloutManager(object):
         )
 
         cum_return = carry_out[-2].squeeze()
-        return jnp.mean(cum_return)
+        return jnp.mean(cum_return), {f"{self.env.name}:cum_return" : jnp.mean(cum_return)}
 
 
 @partial(jax.jit, static_argnums=0)
@@ -293,10 +295,11 @@ def train_ppo(rng, config, model, params, mle_log, mask_obs=False):
                 config.mask_coeff,
             )
             batch = batch_manager.reset()
+            wandb.log(metric_dict)
 
         if (step + 1) % config.evaluate_every_epochs == 0:
             rng, rng_eval = jax.random.split(rng)
-            rewards = rollout_manager.batch_evaluate(
+            rewards, wandb_returns = rollout_manager.batch_evaluate(
                 rng_eval,
                 train_state,
                 config.num_test_rollouts,
@@ -306,6 +309,7 @@ def train_ppo(rng, config, model, params, mle_log, mask_obs=False):
             t.set_description(f"R: {str(rewards)}")
             t.refresh()
 
+            wandb.log({"steps": total_steps, **wandb_returns})
             if mle_log is not None:
                 mle_log.update(
                     {"num_steps": total_steps},
@@ -329,8 +333,8 @@ def flatten_dims(x):
 def mask_observation(obs, rng):
 
     # TODO: Add custom probability
-    visible = jax.random.randint(rng, obs.shape, 0, 10)
-    masked_obs = jnp.where(visible > 0, obs, -1)
+    visible = jax.random.randint(rng, obs.shape, 0, 2)
+    masked_obs = jnp.where(visible, obs, -1)
 
     return masked_obs
 
@@ -371,18 +375,21 @@ def loss_actor_and_critic(
     gae = (gae - gae_mean) / (gae.std() + 1e-8)
     loss_actor1 = ratio * gae
     loss_actor2 = jnp.clip(ratio, 1.0 - clip_eps, 1.0 + clip_eps) * gae
-    loss_actor = -jnp.minimum(loss_actor1, loss_actor2)
+    loss_actor = jnp.minimum(loss_actor1, loss_actor2)
     loss_actor = loss_actor.mean()
 
     entropy = pi.entropy().mean()
 
     masked_obs = mask_observation(obs, mask_rng)
     _, pi_mask = apply_fn(params_model, masked_obs, rng=None)
-    loss_mask = jnp.square(pi_mask - jax.lax.stop_gradient(pi))
+
+    # TODO: Consider a different loss, other than KL (MSE or even XEnt)
+    # loss_mask = jnp.square(pi_mask.prob(jnp.arange(n_actions - jax.lax.stop_gradient(pi))
+    loss_mask = kl_divergence(pi_mask, pi)
     loss_mask = jax.lax.select(mask_obs, loss_mask.mean(), 0.)
 
     total_loss = (
-        loss_actor + critic_coeff * value_loss - entropy_coeff * entropy + mask_coeff * loss_mask
+        -loss_actor + critic_coeff * value_loss - entropy_coeff * entropy + mask_coeff * loss_mask
     )
 
     return total_loss, (
