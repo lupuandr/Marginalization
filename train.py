@@ -7,8 +7,10 @@ import wandb
 def main(config, mle_log, log_ext="", mask_obs=False):
     """Run training with ES or PPO. Store logs and agent ckpt."""
     rng = jax.random.PRNGKey(config.seed_id)
+
     # Setup the model architecture
     rng, rng_init = jax.random.split(rng)
+
     model, params = get_model_ready(rng_init, config)
 
     # Run the training loop (either evosax ES or PPO)
@@ -68,7 +70,7 @@ if __name__ == "__main__":
         "--lrate",
         type=float,
         default=5e-04,
-        help="Random seed of experiment.",
+        help="Learning rate.",
     )
     parser.add_argument(
         "-mask",
@@ -88,12 +90,16 @@ if __name__ == "__main__":
     args, _ = parser.parse_known_args()
     config = load_config(args.config_fname, args.seed_id, args.lrate)
     config["mask"] = args.mask_obs
+    config['train_config']['mask_coeff'] = config['train_config']['mask_coeff']*args.mask_obs
     wandb.init(config=config)
+
+    log_ext = str(args.lrate) if args.lrate != 5e-04 else ""
+    log_ext += f"/mask_coeff{config['train_config']['mask_coeff']}_seed{args.seed_id}"
 
     with jax.disable_jit(False):
         main(
             config.train_config,
             mle_log=None,
-            log_ext=str(args.lrate) if args.lrate != 5e-04 else "",
+            log_ext=log_ext,
             mask_obs=args.mask_obs,
         )
