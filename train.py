@@ -79,6 +79,13 @@ if __name__ == "__main__":
         default=False,
         help="Whether to applying observation masking (marginalization)",
     )
+    parser.add_argument(
+        "-coeff",
+        "--mask_coeff",
+        type=float,
+        default=-1.,
+        help="Overwrite mask loss coefficient",
+    )
     # parser.add_argument(
     #     "-no-wandb",
     #     "--no-wandb",
@@ -90,7 +97,12 @@ if __name__ == "__main__":
     args, _ = parser.parse_known_args()
     config = load_config(args.config_fname, args.seed_id, args.lrate)
     config["mask"] = args.mask_obs
-    config['train_config']['mask_coeff'] = config['train_config']['mask_coeff']*args.mask_obs
+    if args.mask_coeff == -1:
+        config['train_config']['mask_coeff'] = config['train_config']['mask_coeff']*args.mask_obs
+    else:
+        assert args.mask_coeff >= 0 and args.mask_obs
+        config['train_config']['mask_coeff'] = args.mask_coeff
+
     wandb.init(config=config)
 
     log_ext = str(args.lrate) if args.lrate != 5e-04 else ""
