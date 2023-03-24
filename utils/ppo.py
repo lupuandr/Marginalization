@@ -9,6 +9,7 @@ from flax.training.train_state import TrainState
 import numpy as np
 import tqdm
 import gymnax
+import wandb
 
 
 class BatchManager:
@@ -184,7 +185,7 @@ class RolloutManager(object):
         )
 
         cum_return = carry_out[-2].squeeze()
-        return jnp.mean(cum_return)
+        return jnp.mean(cum_return), {f"{self.env.name}:cum_return" : jnp.mean(cum_return)}
 
 
 @partial(jax.jit, static_argnums=0)
@@ -291,10 +292,11 @@ def train_ppo(rng, config, model, params, mle_log):
                 rng_update,
             )
             batch = batch_manager.reset()
+            wandb.log(metric_dict)
 
         if (step + 1) % config.evaluate_every_epochs == 0:
             rng, rng_eval = jax.random.split(rng)
-            rewards = rollout_manager.batch_evaluate(
+            rewards, wandb_returns = rollout_manager.batch_evaluate(
                 rng_eval,
                 train_state,
                 config.num_test_rollouts,
@@ -304,6 +306,7 @@ def train_ppo(rng, config, model, params, mle_log):
             t.set_description(f"R: {str(rewards)}")
             t.refresh()
 
+            wandb.log({"steps": total_steps, **wandb_returns})
             if mle_log is not None:
                 mle_log.update(
                     {"num_steps": total_steps},

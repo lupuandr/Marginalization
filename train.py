@@ -1,6 +1,7 @@
 import jax
 from utils.models import get_model_ready
 from utils.helpers import load_config, save_pkl_object
+import wandb
 
 
 def main(config, mle_log, log_ext=""):
@@ -71,6 +72,9 @@ if __name__ == "__main__":
     )
     args, _ = parser.parse_known_args()
     config = load_config(args.config_fname, args.seed_id, args.lrate)
+
+    wandb.init(config=config)
+
     main(
         config.train_config,
         mle_log=None,
