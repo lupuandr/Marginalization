@@ -332,8 +332,13 @@ def flatten_dims(x):
 @jax.jit
 def mask_observation(obs, rng):
 
-    # TODO: Add custom probability
-    visible = jax.random.randint(rng, obs.shape, 0, 2)
+    rng, prob_rng = jax.random.split(rng)
+    p = jax.random.uniform(prob_rng)
+    visible = jax.random.bernoulli(rng, p, obs.shape)
+
+    # Randomly mask 50% of features
+    # visible = jax.random.randint(rng, obs.shape, 0, 2)
+
     masked_obs = jnp.where(visible, obs, -1)
 
     return masked_obs
