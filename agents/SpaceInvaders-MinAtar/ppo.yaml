@@ -1,7 +1,7 @@
 train_config:
   train_type: "PPO"
-  num_train_steps: 10000000
-  evaluate_every_epochs: 5000
+  num_train_steps: 100000 #00
+  evaluate_every_epochs: 50 #00
 
   env_name: "SpaceInvaders-MinAtar"
   env_kwargs: {}
@@ -21,7 +21,8 @@ train_config:
   gae_lambda: 0.95 # "GAE lambda"
   entropy_coeff: 0.01 # "Entropy loss coefficient"
   critic_coeff: 0.5  # "Value loss coefficient"
-  mask_coeff: 0.5 # "Masking (marginalization) loss coefficient"
+  mask_coeff: 0.002 # "Masking (marginalization) loss coefficient"
+  masks_per_obs: 1 # Number of masks applied to each observation in batch per model update
 
   network_name: "Categorical-MLP"
   network_config:

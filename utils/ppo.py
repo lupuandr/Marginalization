@@ -15,13 +15,13 @@ import wandb
 
 class BatchManager:
     def __init__(
-        self,
-        discount: float,
-        gae_lambda: float,
-        n_steps: int,
-        num_envs: int,
-        action_size,
-        state_space,
+            self,
+            discount: float,
+            gae_lambda: float,
+            n_steps: int,
+            num_envs: int,
+            action_size,
+            state_space,
     ):
         self.num_envs = num_envs
         self.action_size = action_size
@@ -64,14 +64,14 @@ class BatchManager:
     @partial(jax.jit, static_argnums=0)
     def append(self, buffer, state, action, reward, done, log_pi, value):
         return {
-                "states":  buffer["states"].at[buffer["_p"]].set(state),
-                "actions": buffer["actions"].at[buffer["_p"]].set(action),
-                "rewards": buffer["rewards"].at[buffer["_p"]].set(reward.squeeze()),
-                "dones": buffer["dones"].at[buffer["_p"]].set(done.squeeze()),
-                "log_pis_old": buffer["log_pis_old"].at[buffer["_p"]].set(log_pi),
-                "values_old": buffer["values_old"].at[buffer["_p"]].set(value),
-                "_p": (buffer["_p"] + 1) % self.n_steps,
-            }
+            "states": buffer["states"].at[buffer["_p"]].set(state),
+            "actions": buffer["actions"].at[buffer["_p"]].set(action),
+            "rewards": buffer["rewards"].at[buffer["_p"]].set(reward.squeeze()),
+            "dones": buffer["dones"].at[buffer["_p"]].set(done.squeeze()),
+            "log_pis_old": buffer["log_pis_old"].at[buffer["_p"]].set(log_pi),
+            "values_old": buffer["values_old"].at[buffer["_p"]].set(value),
+            "_p": (buffer["_p"] + 1) % self.n_steps,
+        }
 
     @partial(jax.jit, static_argnums=0)
     def get(self, buffer):
@@ -92,7 +92,7 @@ class BatchManager:
 
     @partial(jax.jit, static_argnums=0)
     def calculate_gae(
-        self, value: jnp.ndarray, reward: jnp.ndarray, done: jnp.ndarray
+            self, value: jnp.ndarray, reward: jnp.ndarray, done: jnp.ndarray
     ) -> Tuple[jnp.ndarray, jnp.ndarray]:
         advantages = []
         gae = 0.0
@@ -119,10 +119,10 @@ class RolloutManager(object):
 
     @partial(jax.jit, static_argnums=0)
     def select_action_ppo(
-        self,
-        train_state: TrainState,
-        obs: jnp.ndarray,
-        rng: jax.random.PRNGKey,
+            self,
+            train_state: TrainState,
+            obs: jnp.ndarray,
+            rng: jax.random.PRNGKey,
     ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jax.random.PRNGKey]:
         value, pi = policy(train_state.apply_fn, train_state.params, obs, rng)
         action = pi.sample(seed=rng)
@@ -161,13 +161,13 @@ class RolloutManager(object):
             new_cum_reward = cum_reward + reward * valid_mask
             new_valid_mask = valid_mask * (1 - done)
             carry, y = [
-                next_o,
-                next_s,
-                train_state,
-                rng,
-                new_cum_reward,
-                new_valid_mask,
-            ], [new_valid_mask]
+                           next_o,
+                           next_s,
+                           train_state,
+                           rng,
+                           new_cum_reward,
+                           new_valid_mask,
+                       ], [new_valid_mask]
             return carry, y
 
         # Scan over episode step loop
@@ -186,15 +186,15 @@ class RolloutManager(object):
         )
 
         cum_return = carry_out[-2].squeeze()
-        return jnp.mean(cum_return), {f"{self.env.name}:cum_return" : jnp.mean(cum_return)}
+        return jnp.mean(cum_return), {f"{self.env.name}:cum_return": jnp.mean(cum_return)}
 
 
 @partial(jax.jit, static_argnums=0)
 def policy(
-    apply_fn: Callable[..., Any],
-    params: flax.core.frozen_dict.FrozenDict,
-    obs: jnp.ndarray,
-    rng,
+        apply_fn: Callable[..., Any],
+        params: flax.core.frozen_dict.FrozenDict,
+        obs: jnp.ndarray,
+        rng,
 ):
     value, pi = apply_fn(params, obs, rng)
     return value, pi
@@ -237,12 +237,12 @@ def train_ppo(rng, config, model, params, mle_log, mask_obs=False):
 
     @partial(jax.jit, static_argnums=5)
     def get_transition(
-        train_state: TrainState,
-        obs: jnp.ndarray,
-        state: dict,
-        batch,
-        rng: jax.random.PRNGKey,
-        num_train_envs: int,
+            train_state: TrainState,
+            obs: jnp.ndarray,
+            state: dict,
+            batch,
+            rng: jax.random.PRNGKey,
+            num_train_envs: int,
     ):
         action, log_pi, value, new_key = rollout_manager.select_action(
             train_state, obs, rng
@@ -293,6 +293,7 @@ def train_ppo(rng, config, model, params, mle_log, mask_obs=False):
                 rng_update,
                 mask_obs,
                 config.mask_coeff,
+                config.masks_per_obs,
             )
             batch = batch_manager.reset()
             wandb.log(metric_dict)
@@ -329,9 +330,9 @@ def train_ppo(rng, config, model, params, mle_log, mask_obs=False):
 def flatten_dims(x):
     return x.swapaxes(0, 1).reshape(x.shape[0] * x.shape[1], *x.shape[2:])
 
+
 @jax.jit
 def mask_observation(obs, rng):
-
     rng, prob_rng = jax.random.split(rng)
     p = jax.random.uniform(prob_rng)
     visible = jax.random.bernoulli(rng, p, obs.shape)
@@ -344,23 +345,40 @@ def mask_observation(obs, rng):
     return masked_obs
 
 
-def loss_actor_and_critic(
-    params_model: flax.core.frozen_dict.FrozenDict,
-    apply_fn: Callable[..., Any],
-    obs: jnp.ndarray,
-    target: jnp.ndarray,
-    value_old: jnp.ndarray,
-    log_pi_old: jnp.ndarray,
-    gae: jnp.ndarray,
-    action: jnp.ndarray,
-    clip_eps: float,
-    critic_coeff: float,
-    entropy_coeff: float,
-    mask_rng: jax.random.PRNGKey,
-    mask_obs: bool,
-    mask_coeff: float,
-) -> jnp.ndarray:
+@partial(jax.jit, static_argnums=1)
+def compute_mask_loss(
+        params_model: flax.core.frozen_dict.FrozenDict,
+        apply_fn: Callable[..., Any],
+        pi,
+        obs,
+        mask_rng,
+):
+    masked_obs = mask_observation(obs, mask_rng)
+    _, pi_mask = apply_fn(params_model, masked_obs, rng=None)
 
+    # TODO: Consider a different loss, other than KL (MSE or even XEnt)
+    # loss_mask = jnp.square(pi_mask.prob(jnp.arange(n_actions - jax.lax.stop_gradient(pi))
+    loss_mask = kl_divergence(pi_mask, pi)
+    return loss_mask.mean()
+
+
+def loss_actor_and_critic(
+        params_model: flax.core.frozen_dict.FrozenDict,
+        apply_fn: Callable[..., Any],
+        obs: jnp.ndarray,
+        target: jnp.ndarray,
+        value_old: jnp.ndarray,
+        log_pi_old: jnp.ndarray,
+        gae: jnp.ndarray,
+        action: jnp.ndarray,
+        clip_eps: float,
+        critic_coeff: float,
+        entropy_coeff: float,
+        mask_rng: jax.random.PRNGKey,
+        mask_obs: bool,
+        mask_coeff: float,
+        masks_per_obs: int,
+) -> jnp.ndarray:
     value_pred, pi = apply_fn(params_model, obs, rng=None)
     value_pred = value_pred[:, 0]
 
@@ -385,16 +403,44 @@ def loss_actor_and_critic(
 
     entropy = pi.entropy().mean()
 
-    masked_obs = mask_observation(obs, mask_rng)
-    _, pi_mask = apply_fn(params_model, masked_obs, rng=None)
+    # Mask each observation N times, each time with a different masking probability
+    mask_rng_array = jax.random.split(mask_rng, masks_per_obs)
+    # masked_obs = mask_observation(obs, mask_rng)
 
-    # TODO: Consider a different loss, other than KL (MSE or even XEnt)
-    # loss_mask = jnp.square(pi_mask.prob(jnp.arange(n_actions - jax.lax.stop_gradient(pi))
-    loss_mask = kl_divergence(pi_mask, pi)
+    # masked_obs = jax.vmap(mask_observation, (None, 0))(obs, mask_rng_array)
+    # mask_batch_shape = jnp.array(obs.shape)
+    # mask_batch_shape[0] = obs.shape[0]*masks_per_obs
+    # masked_obs = jnp.reshape(masked_obs, mask_batch_shape)
+
+    # assert masked_obs[0].shape == obs[0].shape
+
+    # _, pi_mask = apply_fn(params_model, masked_obs, rng=None)
+
+    # TODO: fix this bug
+    # import pdb;
+    # pdb.set_trace()
+    vmap_func = lambda x, y : compute_mask_loss(params_model, apply_fn, pi, x, y)
+    loss_mask = jax.vmap(vmap_func, (None, 0))(
+        # params_model,  #: flax.core.frozen_dict.FrozenDict,
+        # apply_fn,  #: Callable[..., Any],
+        # pi,
+        obs,
+        mask_rng_array
+    )
+    # loss_mask = jax.vmap(compute_mask_loss, (None, None, None, None, 0))(
+    #     params_model,  #: flax.core.frozen_dict.FrozenDict,
+    #     apply_fn,  #: Callable[..., Any],
+    #     pi,
+    #     obs,
+    #     mask_rng_array
+    # )
+
+    # loss_mask = kl_divergence(pi_mask, pi)
+    # # Set loss to 0 if flag is false
     loss_mask = jax.lax.select(mask_obs, loss_mask.mean(), 0.)
 
     total_loss = (
-        -loss_actor + critic_coeff * value_loss - entropy_coeff * entropy + mask_coeff * loss_mask
+            -loss_actor + critic_coeff * value_loss - entropy_coeff * entropy + mask_coeff * loss_mask
     )
 
     return total_loss, (
@@ -409,18 +455,19 @@ def loss_actor_and_critic(
 
 
 def update(
-    train_state: TrainState,
-    batch: Tuple,
-    num_envs: int,
-    n_steps: int,
-    n_minibatch: int,
-    epoch_ppo: int,
-    clip_eps: float,
-    entropy_coeff: float,
-    critic_coeff: float,
-    rng: jax.random.PRNGKey,
-    mask_obs=False,
-    mask_coeff=0,
+        train_state: TrainState,
+        batch: Tuple,
+        num_envs: int,
+        n_steps: int,
+        n_minibatch: int,
+        epoch_ppo: int,
+        clip_eps: float,
+        entropy_coeff: float,
+        critic_coeff: float,
+        rng: jax.random.PRNGKey,
+        mask_obs=False,
+        mask_coeff=0.,
+        masks_per_obs=1
 ):
     """Perform multiple epochs of updates with multiple updates."""
     obs, action, log_pi_old, value, target, gae = batch
@@ -433,7 +480,7 @@ def update(
         rng, perm_rng, mask_rng = jax.random.split(rng, 3)
         idxes = jax.random.permutation(perm_rng, idxes)
         idxes_list = [
-            idxes[start : start + size_minibatch]
+            idxes[start: start + size_minibatch]
             for start in jnp.arange(0, size_batch, size_minibatch)
         ]
 
@@ -452,6 +499,7 @@ def update(
             mask_rng,
             mask_obs,
             mask_coeff,
+            masks_per_obs,
         )
 
         total_loss, (
@@ -479,22 +527,23 @@ def update(
     return avg_metrics_dict, train_state, rng
 
 
-@jax.jit
+@partial(jax.jit, static_argnums=14)
 def update_epoch(
-    train_state: TrainState,
-    idxes: jnp.ndarray,
-    obs,
-    action,
-    log_pi_old,
-    value,
-    target,
-    gae,
-    clip_eps: float,
-    entropy_coeff: float,
-    critic_coeff: float,
-    mask_rng: jax.random.PRNGKey,
-    mask_obs: bool,
-    mask_coeff: float,
+        train_state: TrainState,
+        idxes: jnp.ndarray,
+        obs,
+        action,
+        log_pi_old,
+        value,
+        target,
+        gae,
+        clip_eps: float,
+        entropy_coeff: float,
+        critic_coeff: float,
+        mask_rng: jax.random.PRNGKey,
+        mask_obs: bool,
+        mask_coeff: float,
+        masks_per_obs: int,    # TODO: Check if need static here
 ):
     for idx in idxes:
         mask_rng, idx_mask_rng = jax.random.split(mask_rng)
@@ -516,6 +565,7 @@ def update_epoch(
             mask_rng=idx_mask_rng,
             mask_obs=mask_obs,
             mask_coeff=mask_coeff,
+            masks_per_obs=masks_per_obs,
         )
         train_state = train_state.apply_gradients(grads=grads)
     return train_state, total_loss
