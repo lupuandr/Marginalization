@@ -405,38 +405,14 @@ def loss_actor_and_critic(
 
     # Mask each observation N times, each time with a different masking probability
     mask_rng_array = jax.random.split(mask_rng, masks_per_obs)
-    # masked_obs = mask_observation(obs, mask_rng)
 
-    # masked_obs = jax.vmap(mask_observation, (None, 0))(obs, mask_rng_array)
-    # mask_batch_shape = jnp.array(obs.shape)
-    # mask_batch_shape[0] = obs.shape[0]*masks_per_obs
-    # masked_obs = jnp.reshape(masked_obs, mask_batch_shape)
-
-    # assert masked_obs[0].shape == obs[0].shape
-
-    # _, pi_mask = apply_fn(params_model, masked_obs, rng=None)
-
-    # TODO: fix this bug
-    # import pdb;
-    # pdb.set_trace()
     vmap_func = lambda x, y : compute_mask_loss(params_model, apply_fn, pi, x, y)
     loss_mask = jax.vmap(vmap_func, (None, 0))(
-        # params_model,  #: flax.core.frozen_dict.FrozenDict,
-        # apply_fn,  #: Callable[..., Any],
-        # pi,
         obs,
         mask_rng_array
     )
-    # loss_mask = jax.vmap(compute_mask_loss, (None, None, None, None, 0))(
-    #     params_model,  #: flax.core.frozen_dict.FrozenDict,
-    #     apply_fn,  #: Callable[..., Any],
-    #     pi,
-    #     obs,
-    #     mask_rng_array
-    # )
-
-    # loss_mask = kl_divergence(pi_mask, pi)
-    # # Set loss to 0 if flag is false
+    
+    # Set loss to 0 if flag is false
     loss_mask = jax.lax.select(mask_obs, loss_mask.mean(), 0.)
 
     total_loss = (

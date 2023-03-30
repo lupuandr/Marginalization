@@ -88,6 +88,13 @@ if __name__ == "__main__":
         default=-1.,
         help="Overwrite mask loss coefficient",
     )
+    parser.add_argument(
+        "-masks",
+        "--masks_per_obs",
+        type=int,
+        default=-1,
+        help="Overwrite number of masks per observation",
+    )
     # parser.add_argument(
     #     "-no-wandb",
     #     "--no-wandb",
@@ -104,6 +111,9 @@ if __name__ == "__main__":
     else:
         assert args.mask_coeff >= 0 and args.mask_obs
         config['train_config']['mask_coeff'] = args.mask_coeff
+
+    if args.masks_per_obs > 0:
+        config['train_config']['masks_per_obs'] = args.masks_per_obs
 
     wandb.init(config=config)
 
